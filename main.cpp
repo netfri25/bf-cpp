@@ -7,6 +7,9 @@ struct List {};
 template<typename T, T>
 struct Single {};
 
+template<typename T>
+struct WaitingForInput {};
+
 
 template<typename T, T... xs, T... ys>
 consteval List<T, xs..., ys...> operator+(List<T, xs...>, List<T, ys...>)
@@ -24,6 +27,19 @@ consteval auto at(Single<unsigned, 0>, List<T, value, rest...>)
 template<typename T, unsigned index, T value, T... rest>
 consteval auto at(Single<unsigned, index>, List<T, value, rest...>)
 { return at(Single<unsigned, index - 1>{}, List<T, rest...>{}); }
+
+
+template<typename T, unsigned index, T value, T first, T... rest>
+consteval auto set(Single<unsigned, index>, Single<T, value>, List<T, first, rest...>)
+{ return List<T, first>{} + set(Single<unsigned, index - 1>{}, Single<T, value>{}, List<T, rest...>{}); }
+
+template<typename T, unsigned index, T value>
+consteval auto set(Single<unsigned, index>, Single<T, value>, List<T>)
+{ return set(Single<unsigned, index>{}, Single<T, value>{}, List<T, T{}>{}); }
+
+template<typename T, T value, T first, T... rest>
+consteval auto set(Single<unsigned, 0>, Single<T, value>, List<T, first, rest...>)
+{ return List<T, value, rest...>{}; }
 
 
 template<typename T, T first, T... rest>
@@ -104,61 +120,70 @@ consteval auto decrement(Single<unsigned, index>, List<char, value, rest...>)
 { return List<char, value>{} + decrement(Single<unsigned, index - 1>{}, List<char, rest...>{}); }
 
 
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run(List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run_op(Single<char, at(Single<unsigned, op_index>{}, List<char, ops...>{})>{}, List<char, ops...>{}, Single<unsigned, op_index>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run(List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run_op(Single<char, at(Single<unsigned, op_index>{}, List<char, ops...>{})>{}, List<char, ops...>{}, Single<unsigned, op_index>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '+'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, increment(Single<unsigned, ptr>{}, List<char, tape...>{}), List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '-'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, decrement(Single<unsigned, ptr>{}, List<char, tape...>{}), List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '>'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr + 1>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '<'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr - 1>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto conditional_run_op(Single<bool, true>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, 1 + find_matching_close_paren(Single<unsigned, op_index+1>{}, skip(Single<unsigned, op_index + 1>{}, List<char, ops...>{}), Single<unsigned, 1>{})>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto conditional_run_op(Single<bool, false>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '['>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return conditional_run_op(Single<bool, at(Single<unsigned, ptr>{}, List<char, tape...>{}) == 0>{}, List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, ']'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, find_matching_open_paren(Single<unsigned, 0>{}, take(Single<unsigned, op_index>{}, List<char, ops...>{}), List<unsigned>{})>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
+
+
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, '.'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output..., at(Single<unsigned, ptr>{}, List<char, tape...>{})>{}); }
+
 
 template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '+'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, increment(Single<unsigned, ptr>{}, List<char, tape...>{}), List<char, output...>{}); }
+consteval auto run_op(Single<char, ','>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char>, List<char, output...>)
+{ return WaitingForInput<List<char, tape...>>{}; }
 
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '-'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, decrement(Single<unsigned, ptr>{}, List<char, tape...>{}), List<char, output...>{}); }
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '>'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr + 1>{}, List<char, tape...>{}, List<char, output...>{}); }
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '<'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr - 1>{}, List<char, tape...>{}, List<char, output...>{}); }
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto conditional_run_op(Single<bool, true>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, 1 + find_matching_close_paren(Single<unsigned, op_index+1>{}, skip(Single<unsigned, op_index + 1>{}, List<char, ops...>{}), Single<unsigned, 1>{})>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto conditional_run_op(Single<bool, false>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '['>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return conditional_run_op(Single<bool, at(Single<unsigned, ptr>{}, List<char, tape...>{}) == 0>{}, List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char first_input, char... input, char... output>
+consteval auto run_op(Single<char, ','>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, first_input, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, set(Single<unsigned, ptr>{}, Single<char, first_input>{}, List<char, tape...>{}), List<char, input...>{}, List<char, output...>{}); }
 
 
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, ']'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, find_matching_open_paren(Single<unsigned, 0>{}, take(Single<unsigned, op_index>{}, List<char, ops...>{}), List<unsigned>{})>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
-
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, '.'>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output..., at(Single<unsigned, ptr>{}, List<char, tape...>{})>{}); }
-
-
-template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, 0>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
+template<char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, 0>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
 { return List<char, output...>{}; }
 
-template<char op, char... ops, unsigned op_index, unsigned ptr, char... tape, char... output>
-consteval auto run_op(Single<char, op>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, output...>)
-{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, output...>{}); }
+template<char op, char... ops, unsigned op_index, unsigned ptr, char... tape, char... input, char... output>
+consteval auto run_op(Single<char, op>, List<char, ops...>, Single<unsigned, op_index>, Single<unsigned, ptr>, List<char, tape...>, List<char, input...>, List<char, output...>)
+{ return run(List<char, ops...>{}, Single<unsigned, op_index + 1>{}, Single<unsigned, ptr>{}, List<char, tape...>{}, List<char, input...>{}, List<char, output...>{}); }
 
 
-template<char... ops>
-consteval auto interpret(List<char, ops...>)
-{ return run(List<char, ops...>{}, Single<unsigned, 0>{}, Single<unsigned, 0>{}, List<char>{}, List<char>{}); }
+template<char... ops, char... input>
+consteval auto interpret(List<char, ops...>, List<char, input...>)
+{ return run(List<char, ops...>{}, Single<unsigned, 0>{}, Single<unsigned, 0>{}, List<char>{}, List<char, input...>{}, List<char>{}); }
 
 
 template<char... cs>
@@ -170,7 +195,14 @@ std::ostream& operator<<(std::ostream& stream, List<char, cs...>) {
     return stream;
 }
 
+template<typename T>
+std::ostream& operator<<(std::ostream& stream, WaitingForInput<T>) {
+    return stream << T{} << "\n(waiting for input)" << std::endl;
+}
+
 auto main() -> int {
-    auto result = interpret(List<char, '+', '+', '+', '+', '+', '+', '+', '+', '[', '>', '+', '+', '+', '+', '[', '>', '+', '+', '>', '+', '+', '+', '>', '+', '+', '+', '>', '+', '<', '<', '<', '<', '-', ']', '>', '+', '>', '+', '>', '-', '>', '>', '+', '[', '<', ']', '<', '-', ']', '>', '>', '.', '>', '-', '-', '-', '.', '+', '+', '+', '+', '+', '+', '+', '.', '.', '+', '+', '+', '.', '>', '>', '.', '<', '-', '.', '<', '.', '+', '+', '+', '.', '-', '-', '-', '-', '-', '-', '.', '-', '-', '-', '-', '-', '-', '-', '-', '.', '>', '>', '+', '.', '>', '+', '+', '.'>{});
-    std::cout << result << std::endl;
+    auto program = List<char, '+', '+', '+', '+', '+', '+', '+', '+', '[', '>', '+', '+', '+', '+', '[', '>', '+', '+', '>', '+', '+', '+', '>', '+', '+', '+', '>', '+', '<', '<', '<', '<', '-', ']', '>', '+', '>', '+', '>', '-', '>', '>', '+', '[', '<', ']', '<', '-', ']', '>', '>', '.', '>', '-', '-', '-', '.', '+', '+', '+', '+', '+', '+', '+', '.', '.', '+', '+', '+', '.', '>', '>', '.', '<', '-', '.', '<', '.', '+', '+', '+', '.', '-', '-', '-', '-', '-', '-', '.', '-', '-', '-', '-', '-', '-', '-', '-', '.', '>', '>', '+', '.', '>', '+', '+', '.'>{};
+    auto input = List<char>{};
+    auto result = interpret(program, input);
+    std::cout << result;
 }
